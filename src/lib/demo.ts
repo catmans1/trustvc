@@ -19,7 +19,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export async function issueDemoCredential(input: IssueInput): Promise<{
+export async function issueDemoCredential(input: IssueInput & { invalidProof?: boolean }): Promise<{
   credential: Credential;
   qr: string;
 }> {
@@ -42,11 +42,11 @@ export async function issueDemoCredential(input: IssueInput): Promise<{
       description: input.achievementDescription || "",
     },
     proof: {
-      type: "DemoProof",
+      type: input.invalidProof ? "TamperedProof" : "DemoProof",
       created: nowIso(),
       proofPurpose: "assertionMethod",
       verificationMethod: `${DEFAULT_DID}#key-1`,
-      jws: "demo-signature",
+      jws: input.invalidProof ? "invalid-signature" : "demo-signature",
     },
   };
 

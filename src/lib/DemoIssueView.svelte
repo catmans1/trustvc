@@ -19,6 +19,7 @@
   let credential = $state<Credential | null>(null);
   let qrDataUrl = $state<string | null>(null);
   let copyFeedback = $state(false);
+  let invalidProof = $state(false);
 
   async function issue() {
     loading = true;
@@ -32,6 +33,7 @@
         achievementName,
         achievementDescription,
         issuerName,
+        invalidProof,
       });
       credential = result.credential;
       qrDataUrl = result.qr;
@@ -108,6 +110,11 @@
     <input bind:value={issuerName} placeholder="組織名" />
   </label>
 
+  <label class="checkbox-label" class:tamper-active={invalidProof}>
+    <input type="checkbox" bind:checked={invalidProof} />
+    <span>Proof 無効 <span class="optional">(検証で INVALID になります)</span></span>
+  </label>
+
   <div class="actions">
     <button onclick={issue} disabled={loading || !recipientName || !achievementName}>
       {loading ? "生成中..." : "生成"}
@@ -122,7 +129,6 @@
     <!-- Credential Card -->
     <div class="cert-card">
       <div class="cert-header">
-        <span class="cert-badge-icon">🏆</span>
         <span class="cert-label">Achievement Certificate</span>
       </div>
       <div class="cert-name">{credSubject(credential)?.name ?? ""}</div>
@@ -187,12 +193,34 @@
     gap: 0.25rem;
     font-size: 0.9rem;
   }
-  input,
+  input:not([type="checkbox"]),
   textarea {
     font-family: inherit;
     padding: 0.5rem;
     border: 1px solid #ccc;
     border-radius: 4px;
+  }
+  .checkbox-label {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #fafafa;
+  }
+  .checkbox-label.tamper-active {
+    border-color: #e74c3c;
+    background: #fff5f5;
+    color: #c0392b;
+  }
+  .checkbox-label input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+    padding: 0;
+    border: none;
   }
   .actions {
     display: flex;
@@ -244,9 +272,6 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-  }
-  .cert-badge-icon {
-    font-size: 1.1rem;
   }
   .cert-name {
     font-size: 1.8rem;
