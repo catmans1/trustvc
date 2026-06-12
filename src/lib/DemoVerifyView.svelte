@@ -14,7 +14,6 @@
   let error = $state<string | null>(null);
   let result = $state<VerificationResponse | null>(null);
   let scanning = $state(false);
-  let scanResult = $state<string | null>(null);
 
   $effect(() => {
     if (initialCredential) {
@@ -46,14 +45,10 @@
   }
 
   function normalizeScanData(data: unknown): string {
-    if (typeof data === "string") {
-      return data;
-    }
+    if (typeof data === "string") return data;
     if (data && typeof data === "object") {
-      const maybe = (data as any).data;
-      if (typeof maybe === "string") {
-        return maybe;
-      }
+      const maybe = (data as Record<string, unknown>).data;
+      if (typeof maybe === "string") return maybe;
       try {
         return JSON.stringify(data, null, 2);
       } catch {
@@ -65,13 +60,10 @@
 
   function handleScan(e: CustomEvent) {
     let rawData = normalizeScanData(e.detail.data);
-    scanResult = rawData;
-
     try {
       let parsed = JSON.parse(rawData);
-      if (parsed && typeof parsed === "object" && typeof (parsed as any).data === "string") {
-        rawData = (parsed as any).data;
-        scanResult = rawData;
+      if (parsed && typeof parsed === "object" && typeof (parsed as Record<string, unknown>).data === "string") {
+        rawData = (parsed as Record<string, unknown>).data as string;
         parsed = JSON.parse(rawData);
       }
       input = JSON.stringify(parsed, null, 2);
@@ -79,7 +71,6 @@
     } catch {
       input = rawData;
     }
-
     scanning = false;
   }
 
@@ -97,7 +88,7 @@
   function stepIcon(step: { valid?: boolean; error?: { message: string } }): string {
     if (step.error) return "⚠︎";
     if (step.valid === true) return "✓";
-    if (step.valid === false) return "×";
+    if (step.valid === false) return "✗";
     return "·";
   }
 
@@ -107,37 +98,103 @@
     if (step.valid === false) return "step ng";
     return "step";
   }
+
+  function isValid(r: VerificationResponse): boolean {
+    return !r.errors?.length;
+  }
+
+  function credField(c: Credential | undefined, key: string): string {
+    if (!c) return "";
+    const v = c[key];
+    if (typeof v === "string") return v;
+    if (v && typeof v === "object") {
+      const rec = v as Record<string, unknown>;
+      return typeof rec.name === "string" ? rec.name : "";
+    }
+    return "";
+  }
+
+  function recipientName(r: VerificationResponse): string {
+    const subj = r.credential?.credentialSubject as Record<string, unknown> | undefined;
+    return typeof subj?.name === "string" ? subj.name : "";
+  }
+
+  function achievementName(r: VerificationResponse): string {
+    const ach = r.credential?.achievement as Record<string, unknown> | undefined;
+    return typeof ach?.name === "string" ? ach.name : "";
+  }
+
+  function issuerName(r: VerificationResponse): string {
+    return credField(r.credential, "issuer");
+  }
 </script>
 
 <div class="panel">
-  <h2>Demo: JSON 検証</h2>
-  <p class="hint">ここに発行された JSON を貼り付け、ブラウザ内で検証します。</p>
+  <h2>検証デモ</h2>
 
-  <textarea bind:value={input} rows="14" placeholder="VC JSON をここに貼り付け" spellcheck="false" />
+  <!-- QR scan as primary entry point -->
+  <button class="scan-btn" onclick={() => (scanning = !scanning)}>
+    <span class="scan-icon">📷</span>
+    {scanning ? "スキャン停止" : "QR コードをスキャン"}
+  </button>
+
+  {#if scanning}
+    <div class="scanner-wrap">
+      <QRScanner on:scan={handleScan} on:error={(e) => (error = String(e.detail.error))} />
+    </div>
+  {/if}
+
+  <div class="divider"><span>または JSON を貼り付け</span></div>
+
+  <textarea bind:value={input} rows="10" placeholder="VC JSON をここに貼り付け" spellcheck="false" />
 
   <div class="actions">
     <button onclick={verify} disabled={loading || !input.trim()}>
       {loading ? "検証中..." : "検証"}
     </button>
-    <button onclick={() => (scanning = !scanning)}>
-      {scanning ? "停止" : "Scan QR"}
-    </button>
+    {#if input.trim()}
+      <button class="ghost" onclick={() => { input = ""; result = null; error = null; }}>クリア</button>
+    {/if}
   </div>
 
   {#if error}
     <p class="error">error: {error}</p>
   {/if}
 
-  {#if scanResult}
-    <div class="scan-result">
-      <strong>QR scan:</strong>
-      <pre>{scanResult}</pre>
-    </div>
-  {/if}
-
   {#if result}
-    <div class="result">
-      <h3>検証結果</h3>
+    <!-- Big VALID / INVALID banner -->
+    <div class="verdict {isValid(result) ? 'verdict-valid' : 'verdict-invalid'}">
+      <span class="verdict-icon">{isValid(result) ? "✓" : "✗"}</span>
+      <span class="verdict-text">{isValid(result) ? "VALID" : "INVALID"}</span>
+    </div>
+
+    <!-- Decoded credential info -->
+    {#if isValid(result) && (recipientName(result) || achievementName(result))}
+      <div class="decoded-info">
+        {#if recipientName(result)}
+          <div class="decoded-row">
+            <span class="decoded-key">発行先</span>
+            <span class="decoded-val">{recipientName(result)}</span>
+          </div>
+        {/if}
+        {#if achievementName(result)}
+          <div class="decoded-row">
+            <span class="decoded-key">Achievement</span>
+            <span class="decoded-val">{achievementName(result)}</span>
+          </div>
+        {/if}
+        {#if issuerName(result)}
+          <div class="decoded-row">
+            <span class="decoded-key">発行者</span>
+            <span class="decoded-val">{issuerName(result)}</span>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    <!-- Verification steps -->
+    <div class="steps-card">
+      <div class="steps-title">検証ステップ</div>
       <ul class="log">
         {#each result.log ?? [] as step}
           <li class={stepClass(step)}>
@@ -149,26 +206,23 @@
           </li>
         {/each}
       </ul>
-      {#if result.errors?.length}
-        <div class="fatal">
-          <strong>検証エラー:</strong>
-          <ul>
-            {#each result.errors as err}
-              <li>{err.message}</li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
-      <details>
-        <summary>raw result</summary>
-        <pre>{JSON.stringify(result, null, 2)}</pre>
-      </details>
     </div>
-  {/if}
-  {#if scanning}
-    <div style="margin-top:1rem">
-      <QRScanner on:scan={handleScan} on:error={(e) => (error = String(e.detail.error))} />
-    </div>
+
+    {#if result.errors?.length}
+      <div class="fatal">
+        <strong>検証エラー:</strong>
+        <ul>
+          {#each result.errors as err}
+            <li>{err.message}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    <details class="json-details">
+      <summary>raw result を表示</summary>
+      <pre>{JSON.stringify(result, null, 2)}</pre>
+    </details>
   {/if}
 </div>
 
@@ -182,14 +236,55 @@
     margin: 0;
     font-size: 1.15rem;
   }
-  .hint {
-    color: #555;
-    font-size: 0.9rem;
-    margin: 0;
+
+  /* QR scan primary button */
+  .scan-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.85rem 1.5rem;
+    background: #1a1a2e;
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    width: 100%;
   }
+  .scan-btn:hover {
+    background: #16213e;
+  }
+  .scan-icon {
+    font-size: 1.2rem;
+  }
+  .scanner-wrap {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid #1a1a2e;
+  }
+
+  /* Divider */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #aaa;
+    font-size: 0.82rem;
+  }
+  .divider::before,
+  .divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #ddd;
+  }
+
   textarea {
-    min-height: 280px;
+    min-height: 220px;
     font-family: ui-monospace, monospace;
+    font-size: 0.82rem;
     padding: 0.55rem;
     border: 1px solid #ccc;
     border-radius: 6px;
@@ -206,27 +301,103 @@
     background: #2a6fff;
     color: white;
     cursor: pointer;
+    font-size: 0.9rem;
   }
   button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
   }
-  .result {
-    padding: 1rem;
-    border-radius: 12px;
-    background: #fff;
-    border: 1px solid #ddd;
+  button.ghost {
+    background: transparent;
+    color: #555;
+    border: 1px solid #ccc;
+  }
+  button.ghost:hover {
+    background: #f5f5f5;
+  }
+
+  /* VALID / INVALID banner */
+  .verdict {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: 14px;
+    font-weight: 800;
+  }
+  .verdict-valid {
+    background: #e6f9ef;
+    border: 2px solid #2ecc71;
+    color: #0f7a3c;
+  }
+  .verdict-invalid {
+    background: #fff0f0;
+    border: 2px solid #e74c3c;
+    color: #b01010;
+  }
+  .verdict-icon {
+    font-size: 2rem;
+    line-height: 1;
+  }
+  .verdict-text {
+    font-size: 1.8rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* Decoded info */
+  .decoded-info {
+    background: #f0f7ff;
+    border: 1px solid #b8d6ff;
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  .decoded-row {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    align-items: baseline;
+  }
+  .decoded-key {
+    color: #5a7fa0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    min-width: 5.5rem;
+    letter-spacing: 0.03em;
+  }
+  .decoded-val {
+    color: #1a1a1a;
+    font-weight: 500;
+  }
+
+  /* Steps card */
+  .steps-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .steps-title {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #666;
+    background: #f8f8f8;
+    border-bottom: 1px solid #e0e0e0;
   }
   .log {
     list-style: none;
     padding: 0;
-    margin: 0 0 1rem;
+    margin: 0;
   }
   .log li {
     display: flex;
     gap: 0.75rem;
-    padding: 0.5rem 0;
+    padding: 0.55rem 0.85rem;
     border-bottom: 1px solid #eee;
+    font-size: 0.9rem;
   }
   .log li:last-child {
     border-bottom: none;
@@ -234,41 +405,56 @@
   .icon {
     width: 1.4rem;
     text-align: center;
+    font-weight: 700;
   }
-  .ok {
-    color: #0a7;
-  }
-  .ng {
-    color: #c00;
-  }
-  .warn {
-    color: #d85;
-  }
+  .ok .icon { color: #0a7; }
+  .ng .icon { color: #c00; }
+  .warn .icon { color: #d85; }
   .detail {
-    color: #555;
+    color: #888;
+    font-size: 0.85rem;
   }
+
   .fatal {
-    margin: 0.75rem 0;
-    padding: 0.75rem;
+    padding: 0.75rem 1rem;
     background: #fff3f0;
     border-radius: 8px;
     border: 1px solid #fcc;
+    font-size: 0.9rem;
   }
-  .scan-result {
-    padding: 0.85rem;
-    border-radius: 10px;
-    background: #f2f9ff;
-    border: 1px solid #cce4ff;
+  .fatal ul {
+    margin: 0.4rem 0 0;
+    padding-left: 1.25rem;
   }
-  .scan-result strong {
-    display: block;
-    margin-bottom: 0.5rem;
+
+  /* JSON details */
+  .json-details {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .json-details summary {
+    padding: 0.6rem 0.85rem;
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: #888;
+    background: #f8f8f8;
+    user-select: none;
+  }
+  .json-details summary:hover {
+    background: #f0f0f0;
   }
   pre {
     background: #f6f8fa;
     padding: 1rem;
-    border-radius: 8px;
+    border-radius: 0;
     overflow-x: auto;
+    margin: 0;
+    font-size: 0.8rem;
+  }
+  .error {
+    color: #c00;
+    font-size: 0.9rem;
     margin: 0;
   }
 </style>

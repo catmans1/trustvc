@@ -18,6 +18,7 @@
   let error = $state<string | null>(null);
   let credential = $state<Credential | null>(null);
   let qrDataUrl = $state<string | null>(null);
+  let copyFeedback = $state(false);
 
   async function issue() {
     loading = true;
@@ -41,9 +42,11 @@
     }
   }
 
-  function copyJson() {
+  async function copyJson() {
     if (!credential) return;
-    navigator.clipboard.writeText(JSON.stringify(credential, null, 2));
+    await navigator.clipboard.writeText(JSON.stringify(credential, null, 2));
+    copyFeedback = true;
+    setTimeout(() => (copyFeedback = false), 2000);
   }
 
   function downloadJson() {
@@ -58,10 +61,27 @@
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  function credSubject(c: Credential) {
+    return c.credentialSubject as Record<string, unknown> | undefined;
+  }
+
+  function credAchievement(c: Credential) {
+    return c.achievement as Record<string, unknown> | undefined;
+  }
+
+  function formatDate(iso: unknown): string {
+    if (typeof iso !== "string") return "";
+    return new Date(iso).toLocaleDateString("ja-JP", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
 </script>
 
 <div class="panel">
-  <h2>Demo: JSON / QR 生成</h2>
+  <h2>発行デモ</h2>
 
   <label>
     受信者名
@@ -69,7 +89,7 @@
   </label>
 
   <label>
-    受信者 ID (任意)
+    受信者 ID <span class="optional">(任意)</span>
     <input bind:value={recipientId} placeholder="did:example:alice" />
   </label>
 
@@ -79,7 +99,7 @@
   </label>
 
   <label>
-    Achievement 説明
+    Achievement 説明 <span class="optional">(任意)</span>
     <textarea bind:value={achievementDescription} rows="2" placeholder="Achievement の詳細説明" />
   </label>
 
@@ -99,24 +119,50 @@
   {/if}
 
   {#if credential}
-    <div class="result">
-      <h3>生成結果</h3>
-      <div class="actions">
-        <button onclick={() => onVerify(credential)}>→ この JSON を検証</button>
-        <button onclick={copyJson}>JSON コピー</button>
-        <button onclick={downloadJson}>JSON ダウンロード</button>
+    <!-- Credential Card -->
+    <div class="cert-card">
+      <div class="cert-header">
+        <span class="cert-badge-icon">🏆</span>
+        <span class="cert-label">Achievement Certificate</span>
       </div>
-
-      {#if qrDataUrl}
-        <div class="qr-preview">
-          <p>QR コード (credential JSON をエンコード)</p>
-          <img src={qrDataUrl} alt="QR Code" width="280" height="280" />
-          <p class="muted">この QR はデモ表示用です。</p>
-        </div>
+      <div class="cert-name">{credSubject(credential)?.name ?? ""}</div>
+      <div class="cert-achievement">{credAchievement(credential)?.name ?? ""}</div>
+      {#if credAchievement(credential)?.description}
+        <div class="cert-desc">{credAchievement(credential)?.description}</div>
       {/if}
-
-      <pre>{JSON.stringify(credential, null, 2)}</pre>
+      <div class="cert-footer">
+        <span>発行者: {typeof credential.issuer === "string" ? credential.issuer : ""}</span>
+        <span>{formatDate(credential.issuanceDate)}</span>
+      </div>
     </div>
+
+    <!-- QR Code -->
+    {#if qrDataUrl}
+      <div class="qr-section">
+        <div class="qr-label">QR コード</div>
+        <img src={qrDataUrl} alt="QR Code" width="240" height="240" />
+        <p class="qr-hint">検証タブで QR をスキャンできます</p>
+      </div>
+    {/if}
+
+    <!-- Primary action -->
+    <button class="verify-btn" onclick={() => onVerify(credential!)}>
+      → この Credential を検証する
+    </button>
+
+    <!-- Secondary actions -->
+    <div class="actions secondary">
+      <button class="ghost" onclick={copyJson}>
+        {copyFeedback ? "コピー完了 ✓" : "JSON コピー"}
+      </button>
+      <button class="ghost" onclick={downloadJson}>JSON ダウンロード</button>
+    </div>
+
+    <!-- Raw JSON collapsible -->
+    <details class="json-details">
+      <summary>JSON 詳細を表示</summary>
+      <pre>{JSON.stringify(credential, null, 2)}</pre>
+    </details>
   {/if}
 </div>
 
@@ -130,10 +176,10 @@
     margin: 0;
     font-size: 1.15rem;
   }
-  .hint {
-    color: #555;
-    font-size: 0.9rem;
-    margin: 0;
+  .optional {
+    color: #999;
+    font-size: 0.8rem;
+    font-weight: normal;
   }
   label {
     display: flex;
@@ -153,6 +199,9 @@
     gap: 0.5rem;
     flex-wrap: wrap;
   }
+  .secondary {
+    margin-top: -0.25rem;
+  }
   button {
     padding: 0.55rem 1rem;
     border: none;
@@ -160,31 +209,136 @@
     background: #2a6fff;
     color: white;
     cursor: pointer;
+    font-size: 0.9rem;
   }
   button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
   }
-  .result {
-    padding: 1rem;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 10px;
+  button.ghost {
+    background: transparent;
+    color: #555;
+    border: 1px solid #ccc;
   }
-  .error {
-    color: #c00;
+  button.ghost:hover {
+    background: #f5f5f5;
   }
-  .qr-preview {
+
+  /* Credential card */
+  .cert-card {
+    border: 2px solid #e8c84a;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #fffdf0 0%, #fff8d6 100%);
+    padding: 1.5rem 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    box-shadow: 0 2px 12px rgba(200, 160, 0, 0.12);
+  }
+  .cert-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #8a6a00;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .cert-badge-icon {
+    font-size: 1.1rem;
+  }
+  .cert-name {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    line-height: 1.2;
+  }
+  .cert-achievement {
+    font-size: 1.1rem;
+    color: #333;
+    font-weight: 500;
+  }
+  .cert-desc {
+    font-size: 0.88rem;
+    color: #666;
+    line-height: 1.5;
+  }
+  .cert-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.82rem;
+    color: #8a6a00;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e8c84a66;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  /* QR section */
+  .qr-section {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.5rem;
+    padding: 1.25rem;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+  }
+  .qr-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #444;
+  }
+  .qr-hint {
+    font-size: 0.8rem;
+    color: #888;
+    margin: 0;
+  }
+
+  /* Verify button */
+  .verify-btn {
+    padding: 0.75rem 1.5rem;
+    background: #1a8a4a;
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+  }
+  .verify-btn:hover {
+    background: #16793f;
+  }
+
+  /* JSON details */
+  .json-details {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .json-details summary {
+    padding: 0.6rem 0.85rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #666;
+    background: #f8f8f8;
+    user-select: none;
+  }
+  .json-details summary:hover {
+    background: #f0f0f0;
   }
   pre {
     background: #f6f8fa;
     padding: 1rem;
-    border-radius: 8px;
     overflow-x: auto;
     margin: 0;
+    font-size: 0.82rem;
+  }
+  .error {
+    color: #c00;
   }
 </style>
