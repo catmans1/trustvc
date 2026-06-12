@@ -7,7 +7,7 @@ import type {
 } from "./api";
 
 const DEFAULT_DID = "did:example:wisdomcerts";
-const DEFAULT_ISSUER_NAME = "WisdomCerts Demo Issuer";
+const DEFAULT_ISSUER_NAME = "WisdomCerts Issuer";
 
 function makeCredentialId(recipientId?: string): string {
   return recipientId

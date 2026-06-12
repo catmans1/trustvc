@@ -10,9 +10,9 @@
 
   let recipientName = $state("タカ");
   let recipientId = $state("");
-  let achievementName = $state("OB 3.0 Demo Credential");
-  let achievementDescription = $state("This credential was generated locally in the browser.");
-  let issuerName = $state("WisdomCerts Demo Issuer");
+  let achievementName = $state("OB 3.0 Credential");
+  let achievementDescription = $state("");
+  let issuerName = $state("WisdomCerts Issuer");
 
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -80,7 +80,7 @@
 
   <label>
     Achievement 説明
-    <textarea bind:value={achievementDescription} rows="2" />
+    <textarea bind:value={achievementDescription} rows="2" placeholder="Achievement の詳細説明" />
   </label>
 
   <label>
