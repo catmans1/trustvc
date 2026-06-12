@@ -244,7 +244,7 @@
     justify-content: center;
     gap: 0.6rem;
     padding: 0.85rem 1.5rem;
-    background: #1a1a2e;
+    background: #2a6fff;
     color: white;
     font-size: 1rem;
     font-weight: 600;
@@ -254,7 +254,7 @@
     width: 100%;
   }
   .scan-btn:hover {
-    background: #16213e;
+    background: #1a5eee;
   }
   .scan-icon {
     font-size: 1.2rem;
